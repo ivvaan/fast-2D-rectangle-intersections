@@ -63,24 +63,14 @@ struct STree {
   }
 
   void insert_left(int lv, int l, int r, int id) {
-    auto pow = (depth - lv);
-    --lv;
+    auto pow = (depth - lv - 1);
+    auto shift = 1 << (depth-1);
+    assert(l < r);
     do {
-      ++lv;
-      --pow;
-      auto from = l >> pow;
-      from += l != from << pow;
-      auto to = r >> pow;
-      if (from != to) {
-        do_insert((1 << lv) + from, id);
-        from <<= pow;
-        if ((pow != 0) && (l != from)){ 
-          r = from;
-          continue;
-        }
-        return;
-      }
-    } while (pow != 0);
+      for (auto d = r - l; (d >> pow) == 0; --pow);
+      r -= (1 << pow);
+      do_insert((shift + r) >> pow, id);
+    } while ((pow != 0) && (l != r));
   }
 
   void insert_right(int lv, int l, int r, int id) {
