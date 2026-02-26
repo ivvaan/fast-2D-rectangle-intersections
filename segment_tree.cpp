@@ -28,6 +28,7 @@ struct level {
 
 
 struct STree {
+  using ins_func = void (STree::*)(int, int);
   interval* tree = nullptr;
   interval* levels = nullptr;
   int n = 0;
@@ -51,65 +52,59 @@ struct STree {
     } while ((l > 1) || (r > 1));
     assert(lv == 0);
   }
-  void do_insert(int pos, int id) {
+  void print_insert(int pos, int id) {
     std::cout << "insert " << id << " to " << tree[pos] << "\n";
   }
-  void insert(int l, int r, int id) {
+
+  void insert(int l, int r, int id, ins_func do_insert) {
     if ((l == 0) && (r == n)) {
-      do_insert(1, id);
+      (this->*do_insert)(1, id);
       return;
     }
-    insert_rec(1, l, r, id);
+    insert_rec(l, r, id, do_insert);
   }
 
-  void insert_left(int lv, int l, int r, int id) {
-    auto pow = (depth - lv - 1);
+  void insert_left(int pow, int l, int r, int id, ins_func do_insert) {
+    if(l==r)
+      return;
     auto shift = 1 << (depth-1);
-    assert(l < r);
     do {
       for (auto d = r - l; (d >> pow) == 0; --pow);
       r -= (1 << pow);
-      do_insert((shift + r) >> pow, id);
+      (this->*do_insert)((shift + r) >> pow, id);
     } while ((pow != 0) && (l != r));
   }
 
-  void insert_right(int lv, int l, int r, int id) {
-    auto pow = (depth - lv - 1);
+  void insert_right(int pow, int l, int r, int id, ins_func do_insert) {
+    if (l == r)
+      return;
     auto shift = 1 << (depth - 1);
-    assert(l < r);
     do {
       for (auto d = r - l; (d >> pow) == 0; --pow);
-      do_insert((shift + l) >> pow, id);
+      (this->*do_insert)((shift + l) >> pow, id);
       l += (1 << pow);
     } while ((pow != 0) && (l != r));
   }
 
 
 
-  void insert_rec(int lv,int l, int r, int id) {
-    auto pow = (depth - lv - 1);
-    auto from = (l >> pow);
-    from += l != (from<<pow);
-    auto to = r >> pow;
-    if (from < to) {
-      auto b = levels[lv].l;
-      assert((1 << lv) == b);
-
-      for (int i = from; i < to; ++i)
-        do_insert((1 << lv) + i, id);
-      if(pow==0)
-        return;
-      from <<= pow;
-      if(l!=from)
-        insert_left(lv+1, l, from, id);
-      to <<= pow;
-      if(r!=to)
-        insert_right(lv+1, to, r, id);
-      return;
+  void insert_rec(int l, int r, int id, ins_func do_insert) {
+    int pow = (depth - 1);
+    int from, to;
+    do {
+      --pow;
+      from = (l >> pow);
+      from += l != (from << pow);
+      to = r >> pow;
+    } while (from >= to);
+    auto idx = (1 << (depth - 1 - pow)) + from;
+    (this->*do_insert)(idx, id);
+    if(from+1<to)
+      (this->*do_insert)(idx + 1, id);
+    if (pow != 0) {
+      insert_left(pow -1, l, from<<pow, id, do_insert);
+      insert_right(pow -1, to<<pow, r, id, do_insert);
     }
-    if (pow == 0)
-      return;
-    insert_rec(lv + 1, l, r, id);
   }
 
   int getSZ() {
@@ -170,7 +165,7 @@ int main()
   STree st(19);
     std::cout <<st<< "\n";
     //getchar();
-    st.insert(3, 19, 121);
+    st.insert(3, 15, 121, &STree::print_insert);
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
