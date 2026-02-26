@@ -63,22 +63,24 @@ struct STree {
   }
 
   void insert_left(int lv, int l, int r, int id) {
-    auto pow = (depth - lv - 1);
-    auto from = (l >> pow);
-    from += l != from << pow;
-    auto to = r >> pow;
-    if (from != to) {
-      assert(from + 1 == to);
-      assert((1 << lv) == levels[lv].l);
-      do_insert((1<<lv) + from, id);
-      from <<= pow;
-      if ((pow != 0)&&(l != from))
-        insert_left(lv + 1, l, from, id);
-      return;
-    }
-    if (pow == 0)
-      return;
-    insert_left(lv + 1, l, r, id);
+    auto pow = (depth - lv);
+    --lv;
+    do {
+      ++lv;
+      --pow;
+      auto from = l >> pow;
+      from += l != from << pow;
+      auto to = r >> pow;
+      if (from != to) {
+        do_insert((1 << lv) + from, id);
+        from <<= pow;
+        if ((pow != 0) && (l != from)){ 
+          r = from;
+          continue;
+        }
+        return;
+      }
+    } while (pow != 0);
   }
 
   void insert_right(int lv, int l, int r, int id) {
@@ -187,7 +189,7 @@ int main()
   STree st(19);
     std::cout <<st<< "\n";
     //getchar();
-    st.insert(7, 9, 1);
+    st.insert(3, 19, 121);
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
