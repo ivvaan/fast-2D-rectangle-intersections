@@ -3,6 +3,11 @@
 
 #include <iostream>
 #include <cassert>
+#include <vector>
+#include <random>
+#include <numeric>
+#include <algorithm>
+
 struct interval {
   int l = 0;
   int r = 0;
@@ -28,20 +33,32 @@ struct level {
 
 
 struct STree {
-  using ins_func = void (STree::*)(int, int);
+  using action_func = void (STree::*)(int, int);
   interval* tree = nullptr;
   interval* levels = nullptr;
+  int* tree_list = nullptr;//[0..sz-1] - used by binary tree to store filling subtree info, 
+  //[sz..SZ-1] - list of filled elements, tree_list[i] is the next filled element in list after i, 
+  // tree_list[0] is the head of list (the first filled element in list or 1 if list is empty)
+  // if list is not empty, tree_list[i] is always >= sz 
   int n = 0;
-  int sz = 0;
-  int SZ = 0;
+  int sz = 0;//first power of 2 greater or equal to n
+  int SZ = 0;//sz+n
   int depth = 0;
 
-  void construct(int l, int r) {
+  void construct() {
+    tree = new interval[SZ];
+    auto t = tree + sz;
+    for (int i = 0; i < n; ++i) {
+      t[i] = interval(i);
+    }
+    levels = new interval[depth + 1];
+    int l = sz;
+    int r = SZ;
     int lv = depth;
-    levels[--lv] = {l,r};
+    levels[lv] = {l,r};
     --r;
     do {
-      tree[r >> 1] = tree[r];
+      tree[(r >> 1)] = tree[r];
       auto tree_ = tree + 1;
       for (int i = l; i < r; i += 2)
         tree[i >> 1] = tree[i] + tree_[i];
@@ -53,43 +70,27 @@ struct STree {
     assert(lv == 0);
   }
   void print_insert(int pos, int id) {
-    std::cout << "insert " << id << " to " << tree[pos] << "\n";
+    if(tree)
+      std::cout << "insert " << id << " to " << tree[pos] << "\n";
+    else
+      std::cout << "insert " << id << " to " << pos << "\n";
   }
 
-  void insert(int l, int r, int id, ins_func do_insert) {
+  void locate(int rank, int id, action_func do_locate) {
+    auto pos = sz+rank;
+    do {
+      (this->*do_locate)(pos, id);
+      pos >>= 1;
+    } while (pos > 0);
+  }
+
+
+  void insert_range(int l, int r, int id, action_func do_insert) {
     if ((l == 0) && (r == n)) {
       (this->*do_insert)(1, id);
       return;
     }
-    insert_rec(l, r, id, do_insert);
-  }
-
-  void insert_left(int pow, int l, int r, int id, ins_func do_insert) {
-    if(l==r)
-      return;
-    auto shift = 1 << (depth-1);
-    do {
-      for (auto d = r - l; (d >> pow) == 0; --pow);
-      r -= (1 << pow);
-      (this->*do_insert)((shift + r) >> pow, id);
-    } while ((pow != 0) && (l != r));
-  }
-
-  void insert_right(int pow, int l, int r, int id, ins_func do_insert) {
-    if (l == r)
-      return;
-    auto shift = 1 << (depth - 1);
-    do {
-      for (auto d = r - l; (d >> pow) == 0; --pow);
-      (this->*do_insert)((shift + l) >> pow, id);
-      l += (1 << pow);
-    } while ((pow != 0) && (l != r));
-  }
-
-
-
-  void insert_rec(int l, int r, int id, ins_func do_insert) {
-    int pow = (depth - 1);
+    int pow = depth;
     int from, to;
     do {
       --pow;
@@ -97,48 +98,146 @@ struct STree {
       from += l != (from << pow);
       to = r >> pow;
     } while (from >= to);
-    auto idx = (1 << (depth - 1 - pow)) + from;
+    auto idx = (1 << (depth - pow)) + from;
     (this->*do_insert)(idx, id);
-    if(from+1<to)
+    if (from + 1 < to)
       (this->*do_insert)(idx + 1, id);
     if (pow != 0) {
-      insert_left(pow -1, l, from<<pow, id, do_insert);
-      insert_right(pow -1, to<<pow, r, id, do_insert);
+      insert_left(pow - 1, l, from << pow, id, do_insert);
+      insert_right(pow - 1, to << pow, r, id, do_insert);
     }
   }
 
-  int getSZ() {
+  void insert_left(int pow, int l, int r, int id, action_func do_insert) {
+    if(l==r)
+      return;
+    do {
+      for (auto d = r - l; (d >> pow) == 0; --pow);
+      r -= (1 << pow);
+      (this->*do_insert)((sz + r) >> pow, id);
+    } while ((pow != 0) && (l != r));
+  }
+
+  void insert_right(int pow, int l, int r, int id, action_func do_insert) {
+    if (l == r)
+      return;
+    do {
+      for (auto d = r - l; (d >> pow) == 0; --pow);
+      (this->*do_insert)((sz + l) >> pow, id);
+      l += (1 << pow);
+    } while ((pow != 0) && (l != r));
+  }
+
+
+  bool is_filled(int pos) const {
+    return tree_list[pos];
+  }
+  static int get_sibling(int pos) {
+    return pos ^ 1;
+  }
+  static bool is_right_son(int pos) {
+    return pos & 1;
+  }
+
+  static int get_left_son(int father) {
+    return father << 1;
+  }
+  static int get_right_son(int father) {
+    return (father << 1) + 1;
+  }
+
+  static constexpr const bool lst_del = false;
+  static constexpr const bool lst_ins = true;
+
+
+  void list_change(int rank, int id, bool is_insert) {
+    auto pos = sz + rank;
+    int inc = is_insert ? 1 : -1;
+    int prev_elem = 0;
+    while (pos!=1) {
+      if (is_right_son(pos) //comes from right
+        && is_filled(get_sibling(pos))//left brother is filled
+        ){
+        prev_elem = get_sibling(pos);
+        pos >>= 1;
+        break;
+      }
+      tree_list[pos >>= 1] += inc;
+      assert(tree_list[pos] >= 0);
+    };
+    if (prev_elem) {
+      while (pos) {
+        tree_list[pos] += inc;
+        assert(tree_list[pos] >= 0);
+        pos >>= 1;
+      }
+      while(prev_elem<sz) {
+        auto rs = get_right_son(prev_elem);
+        prev_elem= is_filled(rs) ? rs : rs - 1;
+      }
+    }
+    pos = sz + rank;
+
+    if (is_insert) {
+      tree_list[pos] = tree_list[prev_elem];
+      tree_list[prev_elem] = pos;
+    }
+    else {
+      assert(tree_list[prev_elem] == pos);
+      tree_list[prev_elem] = tree_list[pos];
+      tree_list[pos] = 0;
+    }
+  }
+
+  int get_next(int rank) const {
+    return tree_list[sz + rank]-sz;
+  }
+
+  int get_sz() {
     int v = 1;
     while (v < n) v <<= 1;
-    return v + n;
+    return v;
   }
 
   int get_depth() {
     int d = 0;
-    for (int v = n; v > 0; v >>= 1) 
+    for (int v = n; v > 0; v >>= 1)
       ++d;
-    return d+1;
+    return d;
   }
 
   STree(int _n) : n(_n) {
-    SZ = getSZ();
-    tree = new interval[SZ];
-    sz =SZ - n;
-    auto t = tree + sz;
-    for (int i = 0; i < n; ++i) {
-      t[i] = interval(i);
-    }
+    sz = get_sz();
+    SZ =sz + n;
     depth = get_depth();
-    levels = new interval[depth];
-    construct(sz, SZ);
+    tree_list = new int[SZ];
+    std::fill_n(tree_list, SZ, 0);
+    tree_list[0] = 1;//fake last list element is stored in 0 position - the header of list
+    //ordered_list[i]==1 where i>=sz means that i is filled, but next filled element is not exists (i.e.last element in list is i)
+
+#ifdef _DEBUG
+    construct();
+#endif  
   }
 
-  ~STree(){
-    delete[] tree;
-    delete[] levels;
+  ~STree() {
+    if (tree) {
+      delete[] tree;
+      tree = nullptr;
+    }
+    if (levels){
+      delete[] levels;
+      levels = nullptr;
+    }
+    if(tree_list) {
+      delete[] tree_list;
+      tree_list = nullptr;
+    }
   }
 
   void print(std::ostream& os,int l,int r) const {
+    if(tree == nullptr)
+      return;
     if ((l < 2) && (r < 3)) {
       os << tree[l] << "\n";
       return;
@@ -160,12 +259,72 @@ struct STree {
   }
 };
 
+struct dpoint {
+  double x = 0, y = 0;
+};
+
+struct drect {
+  dpoint ld, ru;
+};
+
+struct rect_set {
+  std::vector<drect> rects;
+  void fill_random(int n, int seed = 1) {
+    rects.reserve(n);
+    std::mt19937_64 rng;
+    if (seed == 0) {
+      std::random_device rd;
+      rng.seed(rd());
+    }
+    else {
+      rng.seed(static_cast<std::mt19937_64::result_type>(seed));
+    }
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+
+    for (int i = 0; i < n; ++i) {
+      dpoint ld = { dist(rng), dist(rng) };
+      dpoint ru = { dist(rng), dist(rng) };
+      if (ld.x > ru.x)
+        std::swap(ld.x, ru.x);
+      if (ld.y > ru.y)
+        std::swap(ld.y, ru.y);
+      rects.push_back({ ld, ru });
+    }
+  }
+  auto size() const {
+    return rects.size();
+  }
+  static constexpr const bool axis_X = false;
+  static constexpr const bool axis_Y = true;
+
+  int *get_sorted_bounds(int *buf, int* p_ranks,bool axis) const {
+    //precondition buf = new int[size() * 2], p_ranks = new int[size() * 2]
+    std::iota(buf, buf + size() * 2, 0);
+    double* arr = ((double*)rects.data()) + axis;
+    std::sort(buf, buf + size() * 2, [arr](int a, int b) {
+      return arr[a<<1] < arr[b<<1];
+    });
+    for(int i = 0; i < size() * 2; ++i) {
+      p_ranks[buf[i]] = i;
+    }
+    return buf;
+  }
+};
+
 int main()
 {
   STree st(19);
     std::cout <<st<< "\n";
     //getchar();
-    st.insert(3, 15, 121, &STree::print_insert);
+    st.insert_range(3, 15, 121, &STree::print_insert);
+    st.locate(14, 122, &STree::print_insert);
+    st.list_change(11, 128, STree::lst_ins);
+    st.list_change(14, 122, STree::lst_ins);
+    assert(st.get_next(11) == 14);
+
+    st.list_change(18, 122, STree::lst_ins);
+    st.list_change(14, 128, STree::lst_del);
+    assert(st.get_next(11) == 18);
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
