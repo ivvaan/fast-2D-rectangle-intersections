@@ -31,11 +31,29 @@ struct level {
   int sz = 0;
 };
 
+struct count_info {
+  int ins = 0;
+  int del = 0;
+  int max = 0;
+  void insert() {
+    ++ins;
+    if (ins > max)
+      max = ins;
+  }
+  void erase() {
+    ++del;
+  }
+  void locate() {
+    ins -= del;
+  }
+};
+
 
 struct STree {
   using action_func = void (STree::*)(int, int);
   interval* tree = nullptr;
   interval* levels = nullptr;
+  count_info* count_infos = nullptr;
   int* tree_list = nullptr;//[0..sz-1] - used by binary tree to store filling subtree info, 
   //[sz..SZ-1] - list of filled elements, tree_list[i] is the next filled element in list after i, 
   // tree_list[0] is the head of list (the first filled element in list or 1 if list is empty)
@@ -76,8 +94,44 @@ struct STree {
       std::cout << "insert " << id << " to " << pos << "\n";
   }
 
+  void on_count_start() {
+    count_infos = new count_info[SZ];
+  };
+
+  void on_count_end() {
+    for (int i = 0; i < sz; ++i) {
+      //std::cout << "pos " << i << ": max count = " << count_infos[i].max << "\n";
+    }
+    delete[] count_infos;
+    count_infos = nullptr;
+  }
+
+  void do_count_insert(int pos, int id) {
+    count_infos[pos].insert();
+  }
+
+  void do_count_delete(int pos, int id) {
+    count_infos[pos].erase();
+  }
+
+  void do_count_locate(int pos, int id) {
+    count_infos[pos].locate();
+  }
+
+  void count_insert(int l, int r) {
+    insert_range(l, r, 0, &STree::do_count_insert);
+  }
+
+  void count_delete(int l, int r) {
+    insert_range(l, r, 0, &STree::do_count_delete);
+  }
+
+  void count_locate(int rank) {
+    locate(rank, 0, &STree::do_count_locate);
+  }
+
   void locate(int rank, int id, action_func do_locate) {
-    auto pos = sz+rank;
+    auto pos = (sz+rank);
     do {
       (this->*do_locate)(pos, id);
       pos >>= 1;
@@ -249,6 +303,10 @@ struct STree {
     if(tree_list) {
       delete[] tree_list;
       tree_list = nullptr;
+    }
+    if(count_infos){
+      delete[] count_infos;
+      count_infos = nullptr;
     }
   }
 
