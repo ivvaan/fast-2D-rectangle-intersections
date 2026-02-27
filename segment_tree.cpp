@@ -149,10 +149,9 @@ struct STree {
   static constexpr const bool lst_del = false;
   static constexpr const bool lst_ins = true;
 
-
-  void list_change(int rank, int id, bool is_insert) {
+  template<bool is_insert>
+  void list_change(int rank) {
     auto pos = sz + rank;
-    int inc = is_insert ? 1 : -1;
     int prev_elem = 0;
     while (pos!=1) {
       if (is_right_son(pos) //comes from right
@@ -162,13 +161,23 @@ struct STree {
         pos >>= 1;
         break;
       }
-      tree_list[pos >>= 1] += inc;
-      assert(tree_list[pos] >= 0);
+      if constexpr (is_insert) {
+        ++tree_list[pos >>= 1];
+      }
+      else {
+        --tree_list[pos >>= 1];
+        assert(tree_list[pos] >= 0);
+      }
     };
     if (prev_elem) {
       while (pos) {
-        tree_list[pos] += inc;
-        assert(tree_list[pos] >= 0);
+        if constexpr (is_insert) {
+          ++tree_list[pos];
+        }
+        else {
+          --tree_list[pos];
+          assert(tree_list[pos] >= 0);
+        }
         pos >>= 1;
       }
       while(prev_elem<sz) {
@@ -178,7 +187,7 @@ struct STree {
     }
     pos = sz + rank;
 
-    if (is_insert) {
+    if constexpr(is_insert) {
       tree_list[pos] = tree_list[prev_elem];
       tree_list[prev_elem] = pos;
     }
@@ -187,6 +196,14 @@ struct STree {
       tree_list[prev_elem] = tree_list[pos];
       tree_list[pos] = 0;
     }
+  }
+
+  void list_insert(int rank) {
+    list_change<lst_ins>(rank);
+  }
+
+  void list_delete(int rank) {
+    list_change<lst_del>(rank);
   }
 
   int get_next(int rank) const {
@@ -318,12 +335,12 @@ int main()
     //getchar();
     st.insert_range(3, 15, 121, &STree::print_insert);
     st.locate(14, 122, &STree::print_insert);
-    st.list_change(11, 128, STree::lst_ins);
-    st.list_change(14, 122, STree::lst_ins);
+    st.list_insert(11);
+    st.list_insert(14);
     assert(st.get_next(11) == 14);
 
-    st.list_change(18, 122, STree::lst_ins);
-    st.list_change(14, 128, STree::lst_del);
+    st.list_insert(18);
+    st.list_delete(14);
     assert(st.get_next(11) == 18);
 }
 
