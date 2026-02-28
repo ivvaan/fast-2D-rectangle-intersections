@@ -1,6 +1,5 @@
 // segment_tree.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
-
 #include <iostream>
 #include <cassert>
 #include <vector>
@@ -354,6 +353,21 @@ struct arr_info {
   int end = 0;
 };
 
+static bool rects_intersect(const drect& a, const drect& b) {
+  return !(a.ru.x < b.ld.x || b.ru.x < a.ld.x || a.ru.y < b.ld.y || b.ru.y < a.ld.y);
+}
+
+template<typename action_func>
+void rect_intersections_trivial(const rect_set& rs, action_func reporter) {
+  int n = static_cast<int>(rs.size());
+  for (int i = 0; i < n; ++i) {
+    for (int j = i + 1; j < n; ++j) {
+      if (rects_intersect(rs.rects[i], rs.rects[j]))
+        reporter(i, j);
+    }
+  }
+}
+
 template<typename action_func>
 void rect_intersections(const rect_set& rs, action_func reporter) {
   int n = static_cast<int>(rs.size());
@@ -449,6 +463,38 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 
 int main()
 {
+  rect_set rs;
+  rs.fill_random(200, 1);
+
+  std::vector<std::pair<int, int>> fast;
+  std::vector<std::pair<int, int>> trivial;
+
+  auto collect = [](std::vector<std::pair<int, int>>& out) {
+    return [&out](int a, int b) {
+      if (a > b)
+        std::swap(a, b);
+      out.emplace_back(a, b);
+    };
+  };
+
+  rect_intersections(rs, collect(fast));
+  rect_intersections_trivial(rs, collect(trivial));
+
+  auto normalize = [](std::vector<std::pair<int, int>>& v) {
+    std::sort(v.begin(), v.end());
+    //v.erase(std::unique(v.begin(), v.end()), v.end());
+  };
+
+  normalize(fast);
+  normalize(trivial);
+
+  if (fast == trivial) {
+    std::cout << "OK: intersections count = " << fast.size() << "\n";
+  }
+  else {
+    std::cout << "Mismatch: fast=" << fast.size() << " trivial=" << trivial.size() << "\n";
+  }
+
   return 0;
 }
 
