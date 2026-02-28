@@ -335,16 +335,12 @@ struct rect_set {
   static constexpr const bool axis_X = false;
   static constexpr const bool axis_Y = true;
 
-  int *get_sorted_bounds(int *buf, int* p_ranks,bool axis) const {
-    //precondition buf = new int[size() * 2], p_ranks = new int[size() * 2]
+  int *get_sorted_bounds(int *buf, bool axis) const {
+    //precondition buf = new int[size() * 2]
     std::iota(buf, buf + size() * 2, 0);
-    double* arr = ((double*)rects.data()) + axis;
-    std::sort(buf, buf + size() * 2, [arr](int a, int b) {
+    std::sort(buf, buf + size() * 2, [arr = ((double*)rects.data()) + axis](int a, int b) {
       return arr[a<<1] < arr[b<<1];
     });
-    for(int i = 0; i < size() * 2; ++i) {
-      p_ranks[buf[i]] = i;
-    }
     return buf;
   }
 };
@@ -372,19 +368,21 @@ void rect_intersections_trivial(const rect_set& rs, action_func reporter) {
 template<typename action_func>
 void rect_intersections(const rect_set& rs, action_func reporter) {
   int n = static_cast<int>(rs.size());
+
   auto ranks2pointsX_keeper = std::make_unique<int[]>(n * 2);
-  auto ranks2pointsX = ranks2pointsX_keeper.get();
-  auto points2ranksX_keeper = std::make_unique<int[]>(n * 2); 
-  auto points2ranksX = points2ranksX_keeper.get();
-  rs.get_sorted_bounds(ranks2pointsX, points2ranksX, rect_set::axis_X);
+  auto ranks2pointsX = rs.get_sorted_bounds(ranks2pointsX_keeper.get(), rect_set::axis_X);
   auto ranks2pointsY_keeper = std::make_unique<int[]>(n * 2);
-  auto ranks2pointsY = ranks2pointsY_keeper.get();
+  auto ranks2pointsY = rs.get_sorted_bounds(ranks2pointsY_keeper.get(), rect_set::axis_Y);
+  
   auto points2ranksY_keeper = std::make_unique<int[]>(n * 2);
   auto points2ranksY = points2ranksY_keeper.get();
-  rs.get_sorted_bounds(ranks2pointsY, points2ranksY, rect_set::axis_Y);
+  for (int i = 0; i < n * 2; ++i) {
+    points2ranksY[ranks2pointsY[i]] = i;
+  }
+
 
   STree st(n * 2);
-
+  //first we need to calculate how many rectangles can be in each node of segment tree at the same time, to allocate arrays for nodes
   auto counts_keeper = std::make_unique<count_info[]>(st.SZ);
   auto counts = counts_keeper.get();
   std::fill_n(counts, st.SZ, count_info{});
@@ -406,7 +404,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
         });
     }
   }
-
+  //now we know the maximum count of rectangles in each node, we can allocate arrays for nodes
   auto node_arrays_keeper = std::make_unique<arr_info[]>(st.SZ);
   auto node_arrays = node_arrays_keeper.get();
   int acc = 0;
@@ -415,6 +413,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
     acc += counts[i].max;
   }
   counts_keeper.reset();
+
   auto node_rects_keeper = std::make_unique<int[]>(acc);
   auto node_rects = node_rects_keeper.get();
   auto is_removed_keeper = std::make_unique<char[]>(n);
@@ -435,6 +434,9 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
         int new_end = arr_info.beg;
         for (int i = arr_info.beg; i < arr_info.end; ++i) {
           auto other = node_rects[i];
+          //lazy deletion - we mark rectangles as removed, but do not remove them from arrays, 
+          // until we need to locate new rectangle, then we do remove all removed rectangles 
+          // from array and update end index.
           if (is_removed[other])
             continue;
           node_rects[new_end++] = other;
@@ -464,6 +466,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
     else {
       st.list_delete(beginY);
       st.list_delete(endY);
+      //we do not remove rectangle from arrays, but mark it as removed, so it will be removed later when we need to locate new rectangle
       is_removed[rect_id] = 1;
     }
   }
