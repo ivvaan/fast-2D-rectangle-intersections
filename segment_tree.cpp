@@ -371,45 +371,57 @@ void rect_intersections_trivial(const rect_set& rs, action_func reporter) {
 template<typename action_func>
 void rect_intersections(const rect_set& rs, action_func reporter) {
   int n = static_cast<int>(rs.size());
-  int* ranks2pointsX = new int[n * 2];
-  int* points2ranksX = new int[n * 2];
+  auto ranks2pointsX_keeper = std::make_unique<int[]>(n * 2);
+  auto ranks2pointsX = ranks2pointsX_keeper.get();
+  auto points2ranksX_keeper = std::make_unique<int[]>(n * 2); 
+  auto points2ranksX = points2ranksX_keeper.get();
   rs.get_sorted_bounds(ranks2pointsX, points2ranksX, rect_set::axis_X);
-  int* ranks2pointsY = new int[n * 2];
-  int* points2ranksY = new int[n * 2];
+  auto ranks2pointsY_keeper = std::make_unique<int[]>(n * 2);
+  auto ranks2pointsY = ranks2pointsY_keeper.get();
+  auto points2ranksY_keeper = std::make_unique<int[]>(n * 2);
+  auto points2ranksY = points2ranksY_keeper.get();
   rs.get_sorted_bounds(ranks2pointsY, points2ranksY, rect_set::axis_Y);
+
   STree st(n * 2);
-  count_info* counts = new count_info[st.SZ];
-  memset(counts, 0, st.SZ * sizeof(count_info));
+
+  auto counts_keeper = std::make_unique<count_info[]>(st.SZ);
+  auto counts = counts_keeper.get();
+  std::fill_n(counts, st.SZ, count_info{});
+
   for (int i = 0; i < n * 2; ++i) {
-      auto point = ranks2pointsX[i];
-      auto rect_id = point >> 1;
-      if ((point & 1) == 0) {
-        st.locate(points2ranksY[rect_id << 1], rect_id, [counts](int pos, int id) {
-          counts[pos].locate();
-          });
-        st.insert_range(points2ranksY[rect_id << 1], points2ranksY[(rect_id << 1) + 1], rect_id, [counts](int pos, int id) {
-          counts[pos].insert();
+    auto point = ranks2pointsX[i];
+    auto rect_id = point >> 1;
+    if ((point & 1) == 0) {
+      st.locate(points2ranksY[rect_id << 1], rect_id, [=](int pos, int id) {
+        counts[pos].locate();
         });
-      }
-      else {
-        st.insert_range(points2ranksY[rect_id << 1], points2ranksY[(rect_id << 1) + 1], rect_id, [counts](int pos, int id) {
-          counts[pos].erase();
-          });
-      }
+      st.insert_range(points2ranksY[rect_id << 1], points2ranksY[(rect_id << 1) + 1], rect_id, [=](int pos, int id) {
+        counts[pos].insert();
+        });
+    }
+    else {
+      st.insert_range(points2ranksY[rect_id << 1], points2ranksY[(rect_id << 1) + 1], rect_id, [=](int pos, int id) {
+        counts[pos].erase();
+        });
+    }
   }
-  arr_info* node_arrays = new arr_info[st.SZ];
+
+  auto node_arrays_keeper = std::make_unique<arr_info[]>(st.SZ);
+  auto node_arrays = node_arrays_keeper.get();
   int acc = 0;
   for (int i = 0; i < st.SZ; ++i) {
     node_arrays[i].beg = node_arrays[i].end = acc;
     acc += counts[i].max;
   }
-  delete[] counts;
-  int* node_rects = new int[acc];
-  char* is_removed = new char[n];
+  counts_keeper.reset();
+  auto node_rects_keeper = std::make_unique<int[]>(acc);
+  auto node_rects = node_rects_keeper.get();
+  auto is_removed_keeper = std::make_unique<char[]>(n);
+  auto is_removed = is_removed_keeper.get();
   std::fill_n(is_removed, n, 0);
-  int* dublicate_checker = new int[n];
+  auto dublicate_checker_keeper = std::make_unique<int[]>(n);
+  auto dublicate_checker = dublicate_checker_keeper.get();
   std::fill_n(dublicate_checker, n, -1);
-
   for (int i = 0; i < n * 2; ++i) {
     auto point = ranks2pointsX[i];
     auto rect_id = point >> 1;
@@ -417,7 +429,6 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
     auto endY = points2ranksY[point | 1];
 
     if ((point & 1) == 0) {
-
       auto do_locate = [=](int pos, int rect) {
         auto& arr_info = node_arrays[pos];
         int new_end = arr_info.beg;
@@ -426,14 +437,12 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
           if (is_removed[other])
             continue;
           node_rects[new_end++] = other;
-          //if (dublicate_checker[other] == rect) continue;//should not happen at this stage, but just in case
           dublicate_checker[other] = rect;
-          //report intersection between rect and other !!!
           reporter(rect, other);
         }
         arr_info.end = new_end;
         };
-      st.locate(beginY, rect_id,do_locate);
+      st.locate(beginY, rect_id, do_locate);
 
       auto do_insert = [=](int pos, int id) {
         node_rects[node_arrays[pos].end++] = id;
@@ -442,13 +451,12 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
       st.list_insert(endY);
       st.list_insert(beginY);
       auto next = st.get_next(beginY);
-      while(next != endY) {
+      while (next != endY) {
         auto other_id = ranks2pointsY[next] >> 1;
-        next=st.get_next(next);
-        if (dublicate_checker[other_id] == rect_id) //can be dublicates
+        next = st.get_next(next);
+        if (dublicate_checker[other_id] == rect_id)
           continue;
         dublicate_checker[other_id] = rect_id;
-        //report intersection between rect_id and other_id !!!
         reporter(rect_id, other_id);
       }
     }
@@ -458,13 +466,12 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
       is_removed[rect_id] = 1;
     }
   }
-
 }
 
 int main()
 {
   rect_set rs;
-  rs.fill_random(200, 1);
+  rs.fill_random(200, 5);
 
   std::vector<std::pair<int, int>> fast;
   std::vector<std::pair<int, int>> trivial;
