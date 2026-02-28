@@ -45,15 +45,15 @@ struct count_info {
   }
   void locate() {
     ins -= del;
+    assert(ins >= 0); 
+    del = 0;
   }
 };
 
 
 struct STree {
-  using action_func = void (STree::*)(int, int);
   interval* tree = nullptr;
   interval* levels = nullptr;
-  count_info* count_infos = nullptr;
   int* tree_list = nullptr;//[0..sz-1] - used by binary tree to store filling subtree info, 
   //[sz..SZ-1] - list of filled elements, tree_list[i] is the next filled element in list after i, 
   // tree_list[0] is the head of list (the first filled element in list or 1 if list is empty)
@@ -94,54 +94,19 @@ struct STree {
       std::cout << "insert " << id << " to " << pos << "\n";
   }
 
-  void on_count_start() {
-    count_infos = new count_info[SZ];
-  };
-
-  void on_count_end() {
-    for (int i = 0; i < sz; ++i) {
-      //std::cout << "pos " << i << ": max count = " << count_infos[i].max << "\n";
-    }
-    delete[] count_infos;
-    count_infos = nullptr;
-  }
-
-  void do_count_insert(int pos, int id) {
-    count_infos[pos].insert();
-  }
-
-  void do_count_delete(int pos, int id) {
-    count_infos[pos].erase();
-  }
-
-  void do_count_locate(int pos, int id) {
-    count_infos[pos].locate();
-  }
-
-  void count_insert(int l, int r) {
-    insert_range(l, r, 0, &STree::do_count_insert);
-  }
-
-  void count_delete(int l, int r) {
-    insert_range(l, r, 0, &STree::do_count_delete);
-  }
-
-  void count_locate(int rank) {
-    locate(rank, 0, &STree::do_count_locate);
-  }
-
+  template<typename action_func>
   void locate(int rank, int id, action_func do_locate) {
     auto pos = (sz+rank);
     do {
-      (this->*do_locate)(pos, id);
+      do_locate(pos, id);
       pos >>= 1;
     } while (pos > 0);
   }
 
-
+  template<typename action_func>
   void insert_range(int l, int r, int id, action_func do_insert) {
     if ((l == 0) && (r == n)) {
-      (this->*do_insert)(1, id);
+      do_insert(1, id);
       return;
     }
     int pow = depth;
@@ -153,31 +118,33 @@ struct STree {
       to = r >> pow;
     } while (from >= to);
     auto idx = (1 << (depth - pow)) + from;
-    (this->*do_insert)(idx, id);
+    do_insert(idx, id);
     if (from + 1 < to)
-      (this->*do_insert)(idx + 1, id);
+      do_insert(idx + 1, id);
     if (pow != 0) {
       insert_left(pow - 1, l, from << pow, id, do_insert);
       insert_right(pow - 1, to << pow, r, id, do_insert);
     }
   }
 
+  template<typename action_func>
   void insert_left(int pow, int l, int r, int id, action_func do_insert) {
     if(l==r)
       return;
     do {
       for (auto d = r - l; (d >> pow) == 0; --pow);
       r -= (1 << pow);
-      (this->*do_insert)((sz + r) >> pow, id);
+      do_insert((sz + r) >> pow, id);
     } while ((pow != 0) && (l != r));
   }
 
+  template<typename action_func>
   void insert_right(int pow, int l, int r, int id, action_func do_insert) {
     if (l == r)
       return;
     do {
       for (auto d = r - l; (d >> pow) == 0; --pow);
-      (this->*do_insert)((sz + l) >> pow, id);
+      do_insert((sz + l) >> pow, id);
       l += (1 << pow);
     } while ((pow != 0) && (l != r));
   }
@@ -304,10 +271,6 @@ struct STree {
       delete[] tree_list;
       tree_list = nullptr;
     }
-    if(count_infos){
-      delete[] count_infos;
-      count_infos = nullptr;
-    }
   }
 
   void print(std::ostream& os,int l,int r) const {
@@ -386,29 +349,106 @@ struct rect_set {
   }
 };
 
-int main()
-{
-  STree st(19);
-    std::cout <<st<< "\n";
-    //getchar();
-    st.insert_range(3, 15, 121, &STree::print_insert);
-    st.locate(14, 122, &STree::print_insert);
-    st.list_insert(11);
-    st.list_insert(14);
-    assert(st.get_next(11) == 14);
+struct arr_info {
+  int beg = 0;
+  int end = 0;
+};
 
-    st.list_insert(18);
-    st.list_delete(14);
-    assert(st.get_next(11) == 18);
+template<typename action_func>
+void rect_intersections(const rect_set& rs, action_func reporter) {
+  int n = static_cast<int>(rs.size());
+  int* ranks2pointsX = new int[n * 2];
+  int* points2ranksX = new int[n * 2];
+  rs.get_sorted_bounds(ranks2pointsX, points2ranksX, rect_set::axis_X);
+  int* ranks2pointsY = new int[n * 2];
+  int* points2ranksY = new int[n * 2];
+  rs.get_sorted_bounds(ranks2pointsY, points2ranksY, rect_set::axis_Y);
+  STree st(n * 2);
+  count_info* counts = new count_info[st.SZ];
+  memset(counts, 0, st.SZ * sizeof(count_info));
+  for (int i = 0; i < n * 2; ++i) {
+      auto point = ranks2pointsX[i];
+      auto rect_id = point >> 1;
+      if ((point & 1) == 0) {
+        st.locate(points2ranksY[rect_id << 1], rect_id, [counts](int pos, int id) {
+          counts[pos].locate();
+          });
+        st.insert_range(points2ranksY[rect_id << 1], points2ranksY[(rect_id << 1) + 1], rect_id, [counts](int pos, int id) {
+          counts[pos].insert();
+        });
+      }
+      else {
+        st.insert_range(points2ranksY[rect_id << 1], points2ranksY[(rect_id << 1) + 1], rect_id, [counts](int pos, int id) {
+          counts[pos].erase();
+          });
+      }
+  }
+  arr_info* node_arrays = new arr_info[st.SZ];
+  int acc = 0;
+  for (int i = 0; i < st.SZ; ++i) {
+    node_arrays[i].beg = node_arrays[i].end = acc;
+    acc += counts[i].max;
+  }
+  delete[] counts;
+  int* node_rects = new int[acc];
+  char* is_removed = new char[n];
+  std::fill_n(is_removed, n, 0);
+  int* dublicate_checker = new int[n];
+  std::fill_n(dublicate_checker, n, -1);
+
+  for (int i = 0; i < n * 2; ++i) {
+    auto point = ranks2pointsX[i];
+    auto rect_id = point >> 1;
+    auto beginY = points2ranksY[rect_id << 1];
+    auto endY = points2ranksY[point | 1];
+
+    if ((point & 1) == 0) {
+
+      auto do_locate = [=](int pos, int rect) {
+        auto& arr_info = node_arrays[pos];
+        int new_end = arr_info.beg;
+        for (int i = arr_info.beg; i < arr_info.end; ++i) {
+          auto other = node_rects[i];
+          if (is_removed[other])
+            continue;
+          node_rects[new_end++] = other;
+          //if (dublicate_checker[other] == rect) continue;//should not happen at this stage, but just in case
+          dublicate_checker[other] = rect;
+          //report intersection between rect and other !!!
+          reporter(rect, other);
+        }
+        arr_info.end = new_end;
+        };
+      st.locate(beginY, rect_id,do_locate);
+
+      auto do_insert = [=](int pos, int id) {
+        node_rects[node_arrays[pos].end++] = id;
+        };
+      st.insert_range(beginY, endY, rect_id, do_insert);
+      st.list_insert(endY);
+      st.list_insert(beginY);
+      auto next = st.get_next(beginY);
+      while(next != endY) {
+        auto other_id = ranks2pointsY[next] >> 1;
+        next=st.get_next(next);
+        if (dublicate_checker[other_id] == rect_id) //can be dublicates
+          continue;
+        dublicate_checker[other_id] = rect_id;
+        //report intersection between rect_id and other_id !!!
+        reporter(rect_id, other_id);
+      }
+    }
+    else {
+      st.list_delete(beginY);
+      st.list_delete(endY);
+      is_removed[rect_id] = 1;
+    }
+  }
+
 }
 
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
+int main()
+{
+  return 0;
+}
 
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
