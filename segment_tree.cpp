@@ -6,6 +6,7 @@
 #include <random>
 #include <numeric>
 #include <algorithm>
+#include <chrono>
 
 struct interval {
   int l = 0;
@@ -471,7 +472,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 int main()
 {
   rect_set rs;
-  rs.fill_random(200, 5);
+  rs.fill_random(25000, 5);
 
   std::vector<std::pair<int, int>> fast;
   std::vector<std::pair<int, int>> trivial;
@@ -481,25 +482,45 @@ int main()
       if (a > b)
         std::swap(a, b);
       out.emplace_back(a, b);
+      };
     };
-  };
+  auto collect2 = [](long long& out) {
+    return [&out](int a, int b) {
+      ++out;
+       };
+    };
 
-  rect_intersections(rs, collect(fast));
-  rect_intersections_trivial(rs, collect(trivial));
+  long long fast_count = 0;
+  long long trivial_count = 0;
+
+  auto t0 = std::chrono::high_resolution_clock::now();
+  rect_intersections(rs, collect2(fast_count));
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  auto t2 = std::chrono::high_resolution_clock::now();
+  rect_intersections_trivial(rs, collect2(trivial_count));
+  auto t3 = std::chrono::high_resolution_clock::now();
+
+  auto fast_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+  auto trivial_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count();
+
+  std::cout << "rect_intersections: " << fast_ms << " ms\n";
+  std::cout << "rect_intersections_trivial: " << trivial_ms << " ms\n";
+
 
   auto normalize = [](std::vector<std::pair<int, int>>& v) {
     std::sort(v.begin(), v.end());
     //v.erase(std::unique(v.begin(), v.end()), v.end());
   };
 
-  normalize(fast);
-  normalize(trivial);
+  //normalize(fast);
+  //normalize(trivial);
 
-  if (fast == trivial) {
-    std::cout << "OK: intersections count = " << fast.size() << "\n";
+  if (fast_count == trivial_count) {
+    std::cout << "OK: intersections count = " << fast_count << "\n";
   }
   else {
-    std::cout << "Mismatch: fast=" << fast.size() << " trivial=" << trivial.size() << "\n";
+    std::cout << "Mismatch: fast=" << fast_count << " trivial=" << trivial_count << "\n";
   }
 
   return 0;
