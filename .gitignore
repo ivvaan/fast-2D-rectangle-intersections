@@ -367,3 +367,5 @@ FodyWeavers.xsd
 /segment_tree.sln
 /segment_tree.vcxproj
 /segment_tree.vcxproj.filters
+/.gitattributes
+/.gitignore
