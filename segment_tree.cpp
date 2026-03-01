@@ -57,7 +57,7 @@ struct STree {
   int* tree_list = nullptr;//[0..sz-1] - used by binary tree to store filling subtree info, 
   //[sz..SZ-1] - list of filled elements, tree_list[i] is the next filled element in list after i, 
   // tree_list[0] is the head of list (the first filled element in list or 1 if list is empty)
-  // if list is not empty, tree_list[i] is always >= sz 
+  // if list is not empty, tree_list[i] is always >= 1 
   int n = 0;
   int sz = 0;//first power of 2 greater or equal to n
   int SZ = 0;//sz+n
@@ -96,7 +96,7 @@ struct STree {
 
   template<typename action_func>
   void locate(int rank, int id, action_func do_locate) {
-    auto pos = (sz+rank);
+    auto pos = (sz+rank)>>1;
     do {
       do_locate(pos, id);
       pos >>= 1;
@@ -117,36 +117,38 @@ struct STree {
       from += l != (from << pow);
       to = r >> pow;
     } while (from >= to);
+    if (pow < 1) return;
     auto idx = (1 << (depth - pow)) + from;
     do_insert(idx, id);
     if (from + 1 < to)
       do_insert(idx + 1, id);
-    if (pow != 0) {
-      insert_left(pow - 1, l, from << pow, id, do_insert);
-      insert_right(pow - 1, to << pow, r, id, do_insert);
-    }
+    if (pow < 2) return;
+    insert_left(pow - 1, l, from << pow, id, do_insert);
+    insert_right(pow - 1, to << pow, r, id, do_insert);
   }
 
   template<typename action_func>
   void insert_left(int pow, int l, int r, int id, action_func do_insert) {
-    if(l==r)
+    if(l+2>r)
       return;
+    auto l_next = l + 1;
     do {
-      for (auto d = r - l; (d >> pow) == 0; --pow);
+      for (auto d = r - l; (d >> pow) == 0; --pow);//find the highest power of 2 that divides r-l and it must be at least 1, because r-l>=2
       r -= (1 << pow);
       do_insert((sz + r) >> pow, id);
-    } while ((pow != 0) && (l != r));
+    } while (l_next < r);
   }
 
   template<typename action_func>
   void insert_right(int pow, int l, int r, int id, action_func do_insert) {
-    if (l == r)
+    if (l + 2 > r)
       return;
+    auto r_prev = r - 1;
     do {
-      for (auto d = r - l; (d >> pow) == 0; --pow);
+      for (auto d = r - l; (d >> pow) == 0; --pow);//find the highest power of 2 that divides r-l and it must be at least 1, because r-l>=2
       do_insert((sz + l) >> pow, id);
       l += (1 << pow);
-    } while ((pow != 0) && (l != r));
+    } while (l < r_prev);
   }
 
 
@@ -383,9 +385,10 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 
   STree st(n * 2);
   //first we need to calculate how many rectangles can be in each node of segment tree at the same time, to allocate arrays for nodes
-  auto counts_keeper = std::make_unique<count_info[]>(st.SZ);
+  auto tree_size = st.SZ >> 1;
+  auto counts_keeper = std::make_unique<count_info[]>(tree_size);
   auto counts = counts_keeper.get();
-  std::fill_n(counts, st.SZ, count_info{});
+  std::fill_n(counts, tree_size, count_info{});
 
   for (int i = 0; i < n * 2; ++i) {
     auto point = ranks2pointsX[i];
@@ -405,15 +408,20 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
     }
   }
   //now we know the maximum count of rectangles in each node, we can allocate arrays for nodes
-  auto node_arrays_keeper = std::make_unique<arr_info[]>(st.SZ);
+  auto node_arrays_keeper = std::make_unique<arr_info[]>(tree_size);
   auto node_arrays = node_arrays_keeper.get();
   int acc = 0;
-  for (int i = 0; i < st.SZ; ++i) {
+  for (int i = 0; i < tree_size; ++i) {
     node_arrays[i].beg = node_arrays[i].end = acc;
     acc += counts[i].max;
   }
   counts_keeper.reset();
-
+ // With per-node arrays allocated, run the main algorithm: sweep along the X axis.
+ // For each rectangle, locate its lower Y endpoint in the segment tree to find
+ // all rectangles that overlap it in Y. Then insert the rectangle for future checks
+ // and scan the corner list between its Y endpoints, since those also intersect.
+ // Duplicates can appear both in tree nodes and the corner list, so use
+ // `dublicate_checker` to avoid reporting the same pair more than once.
   auto node_rects_keeper = std::make_unique<int[]>(acc);
   auto node_rects = node_rects_keeper.get();
   auto is_removed_keeper = std::make_unique<char[]>(n);
