@@ -85,7 +85,6 @@ struct STree {
       l = l >> 1;
       levels[--lv] = { l,r + 1};
     } while ((l > 1) || (r > 1));
-    assert(lv == 0);
   }
   void print_insert(int pos, int id) {
     if(tree)
@@ -118,7 +117,7 @@ struct STree {
       to = r >> pow;
     } while (from >= to);
     if (pow < 1) return;
-    auto idx = (1 << (depth - pow)) + from;
+    auto idx = (sz>>pow) + from;
     do_insert(idx, id);
     if (from + 1 < to)
       do_insert(idx + 1, id);
@@ -385,7 +384,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 
   STree st(n * 2);
   //first we need to calculate how many rectangles can be in each node of segment tree at the same time, to allocate arrays for nodes
-  auto tree_size = st.SZ >> 1;
+  auto tree_size = (st.SZ>>1) + 1;
   auto counts_keeper = std::make_unique<count_info[]>(tree_size);
   auto counts = counts_keeper.get();
   std::fill_n(counts, tree_size, count_info{});
@@ -395,14 +394,17 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
     auto rect_id = point >> 1;
     if ((point & 1) == 0) {
       st.locate(points2ranksY[rect_id << 1], rect_id, [=](int pos, int id) {
+        assert(pos < tree_size);
         counts[pos].locate();
         });
       st.insert_range(points2ranksY[rect_id << 1], points2ranksY[(rect_id << 1) + 1], rect_id, [=](int pos, int id) {
+        assert(pos < tree_size);
         counts[pos].insert();
         });
     }
     else {
       st.insert_range(points2ranksY[rect_id << 1], points2ranksY[(rect_id << 1) + 1], rect_id, [=](int pos, int id) {
+        assert(pos < tree_size);
         counts[pos].erase();
         });
     }
@@ -483,7 +485,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 int main()
 {
   rect_set rs;
-  rs.fill_random(25000, 5);
+  rs.fill_random(128*256, 5);
 
   std::vector<std::pair<int, int>> fast;
   std::vector<std::pair<int, int>> trivial;
