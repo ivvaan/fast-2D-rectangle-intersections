@@ -1,6 +1,22 @@
-// segment_tree.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
-#include <iostream>
+/*
+*
+*      Copyright (c)  2026  Ivan Balaban
+*      ivvaan@gmail.com
+*
+
+This file is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This file is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+For GNU General Public License terms and conditions
+ see <http://www.gnu.org/licenses/>.
+*/#include <iostream>
 #include <cassert>
 #include <vector>
 #include <random>
@@ -31,25 +47,6 @@ namespace SegmentTreeAndList {
     int l = 0;
     int r = 0;
     int sz = 0;
-  };
-
-  struct count_info {
-    int ins = 0;
-    int del = 0;
-    int max = 0;
-    void insert() {
-      ++ins;
-      if (ins > max)
-        max = ins;
-    }
-    void erase() {
-      ++del;
-    }
-    void locate() {
-      ins -= del;
-      assert(ins >= 0);
-      del = 0;
-    }
   };
 
 
@@ -354,11 +351,6 @@ struct rect_set {
   }
 };
 
-struct arr_info {
-  int beg = 0;
-  int end = 0;
-};
-
 static bool rects_intersect(const drect& a, const drect& b) {
   return !(a.ru.x < b.ld.x || b.ru.x < a.ld.x || a.ru.y < b.ld.y || b.ru.y < a.ld.y);
 }
@@ -376,6 +368,19 @@ void rect_intersections_trivial(const rect_set& rs, action_func reporter) {
 
 template<typename action_func>
 void rect_intersections(const rect_set& rs, action_func reporter) {
+
+  struct count_info {
+    int ins = 0, del = 0, max = 0;
+    void insert() { if (++ins > max) max = ins; }
+    void erase() { ++del; }
+    void locate() { ins -= del; del = 0; }
+  };
+
+  struct arr_info {
+    int beg = 0, end = 0;
+  };
+
+
   using namespace SegmentTreeAndList;
   int n = static_cast<int>(rs.size());
 
