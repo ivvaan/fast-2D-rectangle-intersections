@@ -8,295 +8,303 @@
 #include <algorithm>
 #include <chrono>
 
-struct interval {
-  int l = 0;
-  int r = 0;
-  interval() = default;
-  interval(int _l, int _r) : l(_l), r(_r) {}
-  interval(int _l) : l(_l), r(_l+1) {}
-  interval operator+( const interval& other) const {
-    assert((r == other.l)||(l==other.r));
-    return (r == other.l) ? interval{l, other.r} : interval{other.l, r};
-  }
+namespace SegmentTreeAndList {
 
-  friend std::ostream& operator <<(std::ostream& os, const interval& i) {
-    os << "[" << i.l << ", " << i.r << ")";
-    return os;
-  }
-};
-
-struct level {
-  int l = 0;
-  int r = 0;
-  int sz = 0;
-};
-
-struct count_info {
-  int ins = 0;
-  int del = 0;
-  int max = 0;
-  void insert() {
-    ++ins;
-    if (ins > max)
-      max = ins;
-  }
-  void erase() {
-    ++del;
-  }
-  void locate() {
-    ins -= del;
-    assert(ins >= 0); 
-    del = 0;
-  }
-};
-
-
-struct STree {
-  interval* tree = nullptr;
-  interval* levels = nullptr;
-  int* tree_list = nullptr;//[0..sz-1] - used by binary tree to store filling subtree info, 
-  //[sz..SZ-1] - list of filled elements, tree_list[i] is the next filled element in list after i, 
-  // tree_list[0] is the head of list (the first filled element in list or 1 if list is empty)
-  // if list is not empty, tree_list[i] is always >= 1 
-  int n = 0;
-  int sz = 0;//first power of 2 greater or equal to n
-  int SZ = 0;//sz+n
-  int depth = 0;
-
-  void construct() {
-    tree = new interval[SZ];
-    auto t = tree + sz;
-    for (int i = 0; i < n; ++i) {
-      t[i] = interval(i);
+  struct interval {
+    int l = 0;
+    int r = 0;
+    interval() = default;
+    interval(int _l, int _r) : l(_l), r(_r) {}
+    interval(int _l) : l(_l), r(_l + 1) {}
+    interval operator+(const interval& other) const {
+      assert((r == other.l) || (l == other.r));
+      return (r == other.l) ? interval{ l, other.r } : interval{ other.l, r };
     }
-    levels = new interval[depth + 1];
-    int l = sz;
-    int r = SZ;
-    int lv = depth;
-    levels[lv] = {l,r};
-    --r;
-    do {
-      tree[(r >> 1)] = tree[r];
-      auto tree_ = tree + 1;
-      for (int i = l; i < r; i += 2)
-        tree[i >> 1] = tree[i] + tree_[i];
+
+    friend std::ostream& operator <<(std::ostream& os, const interval& i) {
+      os << "[" << i.l << ", " << i.r << ")";
+      return os;
+    }
+  };
+
+  struct level {
+    int l = 0;
+    int r = 0;
+    int sz = 0;
+  };
+
+  struct count_info {
+    int ins = 0;
+    int del = 0;
+    int max = 0;
+    void insert() {
+      ++ins;
+      if (ins > max)
+        max = ins;
+    }
+    void erase() {
+      ++del;
+    }
+    void locate() {
+      ins -= del;
+      assert(ins >= 0);
+      del = 0;
+    }
+  };
+
+
+  struct STree {
+    interval* tree = nullptr;
+    interval* levels = nullptr;
+    int* tree_list = nullptr;//[0..sz-1] - used by binary tree to store filling subtree info, 
+    //[sz..SZ-1] - list of filled elements, tree_list[i] is the next filled element in list after i, 
+    // tree_list[0] is the head of list (the first filled element in list or 1 if list is empty)
+    // if list is not empty, tree_list[i] is always >= 1 
+    int n = 0;
+    int sz = 0;//first power of 2 greater or equal to n
+    int SZ = 0;//sz+n
+    int depth = 0;
+
+    int get_tree_size() const {
+      return SZ >> 1;
+    }
+
+    void construct() {
+      tree = new interval[SZ];
+      auto t = tree + sz;
+      for (int i = 0; i < n; ++i) {
+        t[i] = interval(i);
+      }
+      levels = new interval[depth + 1];
+      int l = sz;
+      int r = SZ;
+      int lv = depth;
+      levels[lv] = { l,r };
       --r;
-      r = (r >> 1) + ((r - l) & 1);
-      l = l >> 1;
-      levels[--lv] = { l,r + 1};
-    } while ((l > 1) || (r > 1));
-  }
-  void print_insert(int pos, int id) {
-    if(tree)
-      std::cout << "insert " << id << " to " << tree[pos] << "\n";
-    else
-      std::cout << "insert " << id << " to " << pos << "\n";
-  }
-
-  template<typename action_func>
-  void locate(int rank, int id, action_func do_locate) {
-    auto pos = (sz+rank)>>1;
-    do {
-      do_locate(pos, id);
-      pos >>= 1;
-    } while (pos > 0);
-  }
-
-  template<typename action_func>
-  void insert_range(int l, int r, int id, action_func do_insert) {
-    if ((l == 0) && (r == n)) {
-      do_insert(1, id);
-      return;
+      do {
+        tree[(r >> 1)] = tree[r];
+        auto tree_ = tree + 1;
+        for (int i = l; i < r; i += 2)
+          tree[i >> 1] = tree[i] + tree_[i];
+        --r;
+        r = (r >> 1) + ((r - l) & 1);
+        l = l >> 1;
+        levels[--lv] = { l,r + 1 };
+      } while ((l > 1) || (r > 1));
     }
-    int pow = depth;
-    int from, to;
-    do {
-      --pow;
-      from = (l >> pow);
-      from += l != (from << pow);
-      to = r >> pow;
-    } while (from >= to);
-    if (pow < 1) return;
-    auto idx = (sz>>pow) + from;
-    do_insert(idx, id);
-    if (from + 1 < to)
-      do_insert(idx + 1, id);
-    if (pow < 2) return;
-    insert_left(pow - 1, l, from << pow, id, do_insert);
-    insert_right(pow - 1, to << pow, r, id, do_insert);
-  }
+    void print_insert(int pos, int id) {
+      if (tree)
+        std::cout << "insert " << id << " to " << tree[pos] << "\n";
+      else
+        std::cout << "insert " << id << " to " << pos << "\n";
+    }
 
-  template<typename action_func>
-  void insert_left(int pow, int l, int r, int id, action_func do_insert) {
-    if(l+2>r)
-      return;
-    auto l_next = l + 1;
-    do {
-      for (auto d = r - l; (d >> pow) == 0; --pow);//find the highest power of 2 that divides r-l and it must be at least 1, because r-l>=2
-      r -= (1 << pow);
-      do_insert((sz + r) >> pow, id);
-    } while (l_next < r);
-  }
-
-  template<typename action_func>
-  void insert_right(int pow, int l, int r, int id, action_func do_insert) {
-    if (l + 2 > r)
-      return;
-    auto r_prev = r - 1;
-    do {
-      for (auto d = r - l; (d >> pow) == 0; --pow);//find the highest power of 2 that divides r-l and it must be at least 1, because r-l>=2
-      do_insert((sz + l) >> pow, id);
-      l += (1 << pow);
-    } while (l < r_prev);
-  }
-
-
-  bool is_filled(int pos) const {
-    return tree_list[pos];
-  }
-  static int get_sibling(int pos) {
-    return pos ^ 1;
-  }
-  static bool is_right_son(int pos) {
-    return pos & 1;
-  }
-
-  static int get_left_son(int father) {
-    return father << 1;
-  }
-  static int get_right_son(int father) {
-    return (father << 1) + 1;
-  }
-
-  static constexpr const bool lst_del = false;
-  static constexpr const bool lst_ins = true;
-
-  template<bool is_insert>
-  void list_change(int rank) {
-    auto pos = sz + rank;
-    int prev_elem = 0;
-    while (pos!=1) {
-      if (is_right_son(pos) //comes from right
-        && is_filled(get_sibling(pos))//left brother is filled
-        ){
-        prev_elem = get_sibling(pos);
+    template<typename action_func>
+    void locate(int rank, int id, action_func do_locate) {
+      auto pos = (sz + rank) >> 1;
+      do {
+        do_locate(pos, id);
         pos >>= 1;
-        break;
+      } while (pos > 0);
+    }
+
+    template<typename action_func>
+    void insert_range(int l, int r, int id, action_func do_insert) {
+      if ((l == 0) && (r == n)) {
+        do_insert(1, id);
+        return;
       }
-      if constexpr (is_insert) {
-        ++tree_list[pos >>= 1];
-      }
-      else {
-        --tree_list[pos >>= 1];
-        assert(tree_list[pos] >= 0);
-      }
-    };
-    if (prev_elem) {
-      while (pos) {
+      int pow = depth;
+      int from, to;
+      do {
+        --pow;
+        from = (l >> pow);
+        from += l != (from << pow);
+        to = r >> pow;
+      } while (from >= to);
+      if (pow < 1) return;
+      auto idx = (sz >> pow) + from;
+      do_insert(idx, id);
+      if (from + 1 < to)
+        do_insert(idx + 1, id);
+      if (pow < 2) return;
+      insert_left(pow - 1, l, from << pow, id, do_insert);
+      insert_right(pow - 1, to << pow, r, id, do_insert);
+    }
+
+    template<typename action_func>
+    void insert_left(int pow, int l, int r, int id, action_func do_insert) {
+      if (l + 2 > r)
+        return;
+      auto l_next = l + 1;
+      do {
+        for (auto d = r - l; (d >> pow) == 0; --pow);//find the highest power of 2 that divides r-l and it must be at least 1, because r-l>=2
+        r -= (1 << pow);
+        do_insert((sz + r) >> pow, id);
+      } while (l_next < r);
+    }
+
+    template<typename action_func>
+    void insert_right(int pow, int l, int r, int id, action_func do_insert) {
+      if (l + 2 > r)
+        return;
+      auto r_prev = r - 1;
+      do {
+        for (auto d = r - l; (d >> pow) == 0; --pow);//find the highest power of 2 that divides r-l and it must be at least 1, because r-l>=2
+        do_insert((sz + l) >> pow, id);
+        l += (1 << pow);
+      } while (l < r_prev);
+    }
+
+
+    bool is_filled(int pos) const {
+      return tree_list[pos];
+    }
+    static int get_sibling(int pos) {
+      return pos ^ 1;
+    }
+    static bool is_right_son(int pos) {
+      return pos & 1;
+    }
+
+    static int get_left_son(int father) {
+      return father << 1;
+    }
+    static int get_right_son(int father) {
+      return (father << 1) + 1;
+    }
+
+    static constexpr const bool lst_del = false;
+    static constexpr const bool lst_ins = true;
+
+    template<bool is_insert>
+    void list_change(int rank) {
+      auto pos = sz + rank;
+      int prev_elem = 0;
+      while (pos != 1) {
+        if (is_right_son(pos) //comes from right
+          && is_filled(get_sibling(pos))//left brother is filled
+          ) {
+          prev_elem = get_sibling(pos);
+          pos >>= 1;
+          break;
+        }
         if constexpr (is_insert) {
-          ++tree_list[pos];
+          ++tree_list[pos >>= 1];
         }
         else {
-          --tree_list[pos];
+          --tree_list[pos >>= 1];
           assert(tree_list[pos] >= 0);
         }
-        pos >>= 1;
+      };
+      if (prev_elem) {
+        while (pos) {
+          if constexpr (is_insert) {
+            ++tree_list[pos];
+          }
+          else {
+            --tree_list[pos];
+            assert(tree_list[pos] >= 0);
+          }
+          pos >>= 1;
+        }
+        while (prev_elem < sz) {
+          auto rs = get_right_son(prev_elem);
+          prev_elem = is_filled(rs) ? rs : rs - 1;
+        }
       }
-      while(prev_elem<sz) {
-        auto rs = get_right_son(prev_elem);
-        prev_elem= is_filled(rs) ? rs : rs - 1;
+      pos = sz + rank;
+
+      if constexpr (is_insert) {
+        tree_list[pos] = tree_list[prev_elem];
+        tree_list[prev_elem] = pos;
+      }
+      else {
+        assert(tree_list[prev_elem] == pos);
+        tree_list[prev_elem] = tree_list[pos];
+        tree_list[pos] = 0;
       }
     }
-    pos = sz + rank;
 
-    if constexpr(is_insert) {
-      tree_list[pos] = tree_list[prev_elem];
-      tree_list[prev_elem] = pos;
+    void list_insert(int rank) {
+      list_change<lst_ins>(rank);
     }
-    else {
-      assert(tree_list[prev_elem] == pos);
-      tree_list[prev_elem] = tree_list[pos];
-      tree_list[pos] = 0;
+
+    void list_delete(int rank) {
+      list_change<lst_del>(rank);
     }
-  }
 
-  void list_insert(int rank) {
-    list_change<lst_ins>(rank);
-  }
+    int get_next(int rank) const {
+      return tree_list[sz + rank] - sz;
+    }
 
-  void list_delete(int rank) {
-    list_change<lst_del>(rank);
-  }
+    int get_sz() {
+      int v = 1;
+      while (v < n) v <<= 1;
+      return v;
+    }
 
-  int get_next(int rank) const {
-    return tree_list[sz + rank]-sz;
-  }
+    int get_depth() {
+      int d = 0;
+      for (int v = n; v > 0; v >>= 1)
+        ++d;
+      return d;
+    }
 
-  int get_sz() {
-    int v = 1;
-    while (v < n) v <<= 1;
-    return v;
-  }
-
-  int get_depth() {
-    int d = 0;
-    for (int v = n; v > 0; v >>= 1)
-      ++d;
-    return d;
-  }
-
-  STree(int _n) : n(_n) {
-    sz = get_sz();
-    SZ =sz + n;
-    depth = get_depth();
-    tree_list = new int[SZ];
-    std::fill_n(tree_list, SZ, 0);
-    tree_list[0] = 1;//fake last list element is stored in 0 position - the header of list
-    //ordered_list[i]==1 where i>=sz means that i is filled, but next filled element is not exists (i.e.last element in list is i)
+    STree(int _n) : n(_n) {
+      sz = get_sz();
+      SZ = sz + n;
+      depth = get_depth();
+      tree_list = new int[SZ];
+      std::fill_n(tree_list, SZ, 0);
+      tree_list[0] = 1;//fake last list element is stored in 0 position - the header of list
+      //ordered_list[i]==1 where i>=sz means that i is filled, but next filled element is not exists (i.e.last element in list is i)
 
 #ifdef _DEBUG
-    construct();
+      construct();
 #endif  
-  }
-
-  ~STree() {
-    if (tree) {
-      delete[] tree;
-      tree = nullptr;
     }
-    if (levels){
-      delete[] levels;
-      levels = nullptr;
-    }
-    if(tree_list) {
-      delete[] tree_list;
-      tree_list = nullptr;
-    }
-  }
 
-  void print(std::ostream& os,int l,int r) const {
-    if(tree == nullptr)
-      return;
-    if ((l < 2) && (r < 3)) {
-      os << tree[l] << "\n";
-      return;
+    ~STree() {
+      if (tree) {
+        delete[] tree;
+        tree = nullptr;
+      }
+      if (levels) {
+        delete[] levels;
+        levels = nullptr;
+      }
+      if (tree_list) {
+        delete[] tree_list;
+        tree_list = nullptr;
+      }
     }
-    print(os, l>>1, (r>>1)+((r-l)&1));
-    for (int i = l; i < r; ++i) {
-      os << tree[i] << " ";
+
+    void print(std::ostream& os, int l, int r) const {
+      if (tree == nullptr)
+        return;
+      if ((l < 2) && (r < 3)) {
+        os << tree[l] << "\n";
+        return;
+      }
+      print(os, l >> 1, (r >> 1) + ((r - l) & 1));
+      for (int i = l; i < r; ++i) {
+        os << tree[i] << " ";
+      }
+      os << "\n";
     }
-    os << "\n";
-  }
 
-  friend std::ostream& operator <<(std::ostream& os, const STree& st) {
-    //for (int i = 0; i < st.SZ; ++i)     os << st.tree[i] << " ";
-    st.print(os, st.sz, st.SZ);
+    friend std::ostream& operator <<(std::ostream& os, const STree& st) {
+      //for (int i = 0; i < st.SZ; ++i)     os << st.tree[i] << " ";
+      st.print(os, st.sz, st.SZ);
 
-    os << "\n";
+      os << "\n";
 
-    return os;
-  }
-};
+      return os;
+    }
+  };
+
+}
 
 struct dpoint {
   double x = 0, y = 0;
@@ -368,6 +376,7 @@ void rect_intersections_trivial(const rect_set& rs, action_func reporter) {
 
 template<typename action_func>
 void rect_intersections(const rect_set& rs, action_func reporter) {
+  using namespace SegmentTreeAndList;
   int n = static_cast<int>(rs.size());
 
   auto ranks2pointsX_keeper = std::make_unique<int[]>(n * 2);
@@ -384,7 +393,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 
   STree st(n * 2);
   //first we need to calculate how many rectangles can be in each node of segment tree at the same time, to allocate arrays for nodes
-  auto tree_size = (st.SZ>>1) + 1;
+  auto tree_size = st.get_tree_size();
   auto counts_keeper = std::make_unique<count_info[]>(tree_size);
   auto counts = counts_keeper.get();
   std::fill_n(counts, tree_size, count_info{});
@@ -485,7 +494,8 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 int main()
 {
   rect_set rs;
-  rs.fill_random(128*256, 5);
+  int N = 256 * 256;
+  rs.fill_random(N, 52);
 
   std::vector<std::pair<int, int>> fast;
   std::vector<std::pair<int, int>> trivial;
@@ -531,6 +541,8 @@ int main()
 
   if (fast_count == trivial_count) {
     std::cout << "OK: intersections count = " << fast_count << "\n";
+    std::cout << "Speedup: " << static_cast<double>(trivial_ms) / fast_ms << "x\n";
+    std::cout << (double)trivial_count*450 / N / N  << " intersections per rectangle% theortical\n";
   }
   else {
     std::cout << "Mismatch: fast=" << fast_count << " trivial=" << trivial_count << "\n";
