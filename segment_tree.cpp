@@ -65,24 +65,10 @@ namespace SegmentTreeAndList {
     bool is_filled(int pos) const {
       return tree_list[pos];
     }
-    //only for P==1 begin
-    static int get_sibling(int pos) {
-      return pos ^ 1;
-    }
-    static bool is_right_son(int pos) {
-      return pos & 1;
-    }
-    static bool is_leftmost(int pos) {
-      return (pos & 1) == 0;
-    }
 
-    static int get_left_son(int father) {
-      return father << 1;
+    static int get_rightmost_son(int father) {
+      return 1 + (father << P);
     }
-    static int get_right_son(int father) {
-      return (father << 1) + 1;
-    }
-    //only for P==1 end
 
     static int get_leftmost_sibling(int pos) {
       return ((pos + Q) & M) - Q;
@@ -100,7 +86,7 @@ namespace SegmentTreeAndList {
     };
 
     int get_rightmost_filled_son(int father) const {
-      int i = 1 + (father<<P); 
+      int i = get_rightmost_son(father);
       while (!is_filled(i))
         --i;
       return i;
@@ -203,14 +189,14 @@ namespace SegmentTreeAndList {
 
   template<>
   int TreeList<1>::get_left_filled_sibling(int pos) const {
-    if (is_leftmost(pos)) return 0;
-    auto sibling = get_sibling(pos);
+    if ((pos & 1) == 0) return 0;
+    auto sibling = pos ^ 1;
     return is_filled(sibling) ? sibling : 0;
   }
 
   template<>
   int TreeList<1>::get_rightmost_filled_son(int pos) const {
-    auto rs = get_right_son(pos);
+    auto rs = get_rightmost_son(pos);
     return is_filled(rs) ? rs : rs - 1;
   }
 
@@ -589,7 +575,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 int main()
 {
   rect_set rs;
-  int N = 256 * 256 + 1;
+  int N = 128 * 128 + 1;
   rs.fill_random(N, 52);
 
   std::vector<std::pair<int, int>> fast;
