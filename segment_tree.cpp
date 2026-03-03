@@ -271,29 +271,29 @@ namespace SegmentTreeAndList {
       if (from + 1 < to)
         do_insert(idx + 1, id);
       if (pow < 2) return;
-      insert_left(pow - 1, l, from << pow, id, do_insert);
-      insert_right(pow - 1, to << pow, r, id, do_insert);
+      insert_left(l, from << pow, id, do_insert);
+      insert_right(to << pow, r, id, do_insert);
     }
 
     template<typename action_func>
-    void insert_left(int pow, int l, int r, int id, action_func do_insert) {
+    void insert_left(int l, int r, int id, action_func do_insert) {
       if (l + 2 > r)
         return;
       auto l_next = l + 1;
       do {
-        for (auto d = r - l; (d >> pow) == 0; --pow);//find the highest power of 2 that divides r-l and it must be at least 1, because r-l>=2
+        auto pow = std::bit_width((unsigned)(r - l))-1;
         r -= (1 << pow);
         do_insert((sz + r) >> pow, id);
       } while (l_next < r);
     }
 
     template<typename action_func>
-    void insert_right(int pow, int l, int r, int id, action_func do_insert) {
+    void insert_right(int l, int r, int id, action_func do_insert) {
       if (l + 2 > r)
         return;
       auto r_prev = r - 1;
       do {
-        for (auto d = r - l; (d >> pow) == 0; --pow);//find the highest power of 2 that divides r-l and it must be at least 1, because r-l>=2
+        auto pow = std::bit_width((unsigned)(r - l))-1;
         do_insert((sz + l) >> pow, id);
         l += (1 << pow);
       } while (l < r_prev);
@@ -575,7 +575,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 int main()
 {
   rect_set rs;
-  int N = 128 * 128 + 1;
+  int N = 256 * 256 + 1;
   rs.fill_random(N, 52);
 
   std::vector<std::pair<int, int>> fast;
