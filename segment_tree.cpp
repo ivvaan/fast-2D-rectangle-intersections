@@ -49,14 +49,174 @@ namespace SegmentTreeAndList {
     int sz = 0;
   };
 
-
-  struct STree {
-    interval* tree = nullptr;
-    interval* levels = nullptr;
+  template<int P=1>
+  struct TreeList {
+    constexpr static const int S = (1 << P) - 1;
+    constexpr static const int Q = S - 1;
+    constexpr static const int M = ~S;
     int* tree_list = nullptr;//[0..sz-1] - used by binary tree to store filling subtree info, 
     //[sz..SZ-1] - list of filled elements, tree_list[i] is the next filled element in list after i, 
     // tree_list[0] is the head of list (the first filled element in list or 1 if list is empty)
     // if list is not empty, tree_list[i] is always >= 1 
+    int n = 0;
+    int sz = 0;//first power of 2 greater or equal to n
+    int SZ = 0;//sz+n
+
+    bool is_filled(int pos) const {
+      return tree_list[pos];
+    }
+    //only for P==1 begin
+    static int get_sibling(int pos) {
+      return pos ^ 1;
+    }
+    static bool is_right_son(int pos) {
+      return pos & 1;
+    }
+    static bool is_leftmost(int pos) {
+      return (pos & 1) == 0;
+    }
+
+    static int get_left_son(int father) {
+      return father << 1;
+    }
+    static int get_right_son(int father) {
+      return (father << 1) + 1;
+    }
+    //only for P==1 end
+
+    static int get_leftmost_sibling(int pos) {
+      return ((pos + Q) & M) - Q;
+    }
+
+    int get_left_filled_sibling(int pos) const {
+      auto ls = get_leftmost_sibling(pos);
+      --pos;
+      while (ls <= pos) {
+        if (is_filled(pos))
+          return pos;
+        --pos;
+      }
+      return 0;
+    };
+
+    int get_rightmost_filled_son(int father) const {
+      int i = 1 + (father<<P); 
+      while (!is_filled(i))
+        --i;
+      return i;
+    };
+
+    static int get_father(int pos) {
+      return (pos+Q) >> P;
+    }
+
+    static constexpr const bool lst_del = false;
+    static constexpr const bool lst_ins = true;
+
+   
+
+    template<bool is_insert>
+    void list_change(int rank) {
+      auto pos = sz + rank;
+      int prev_elem=0;
+      while (pos!=1) {
+        if (prev_elem=get_left_filled_sibling(pos)) {
+          pos = get_father(pos);
+          break;
+        }
+        if constexpr (is_insert) {
+          ++tree_list[pos = get_father(pos)];
+        }
+        else {
+          --tree_list[pos = get_father(pos)];
+          assert(tree_list[pos] >= 0);
+        }
+      };
+
+      if (prev_elem) {
+        while (pos) {
+          if constexpr (is_insert) {
+            ++tree_list[pos];
+          }
+          else {
+            --tree_list[pos];
+            assert(tree_list[pos] >= 0);
+          }
+          pos = get_father(pos);
+        }
+        while (prev_elem < sz) 
+          prev_elem = get_rightmost_filled_son(prev_elem);
+      }
+      pos = sz + rank;
+
+      if constexpr (is_insert) {
+        tree_list[pos] = tree_list[prev_elem];
+        tree_list[prev_elem] = pos;
+      }
+      else {
+        assert(tree_list[prev_elem] == pos);
+        tree_list[prev_elem] = tree_list[pos];
+        tree_list[pos] = 0;
+      }
+    }
+
+    void list_insert(int rank) {
+      list_change<lst_ins>(rank);
+    }
+
+    void list_delete(int rank) {
+      list_change<lst_del>(rank);
+    }
+
+    int get_next(int rank) const {
+      return tree_list[sz + rank] - sz;
+    }
+
+
+    int get_sz() {
+      int v = 1;
+      int r = 1;
+      while (v < n) {
+        r += v;
+        v <<= P;
+      }
+      return r;
+    }
+
+    TreeList(int _n) : n(_n) {
+      sz = get_sz();
+      SZ = sz + n;
+      tree_list = new int[SZ];
+      std::fill_n(tree_list, SZ, 0);
+      tree_list[0] = 1;//fake last list element is stored in 0 position - the header of list
+      //ordered_list[i]==1 where i>=sz means that i is filled, but next filled element is not exists (i.e.last element in list is i)
+    }
+
+    ~TreeList() {
+     if (tree_list) {
+        delete[] tree_list;
+        tree_list = nullptr;
+      }
+    }
+
+  };
+
+  template<>
+  int TreeList<1>::get_left_filled_sibling(int pos) const {
+    if (is_leftmost(pos)) return 0;
+    auto sibling = get_sibling(pos);
+    return is_filled(sibling) ? sibling : 0;
+  }
+
+  template<>
+  int TreeList<1>::get_rightmost_filled_son(int pos) const {
+    auto rs = get_right_son(pos);
+    return is_filled(rs) ? rs : rs - 1;
+  }
+
+  struct STree {
+    interval* tree = nullptr;
+    interval* levels = nullptr;
     int n = 0;
     int sz = 0;//first power of 2 greater or equal to n
     int SZ = 0;//sz+n
@@ -154,9 +314,6 @@ namespace SegmentTreeAndList {
     }
 
 
-    bool is_filled(int pos) const {
-      return tree_list[pos];
-    }
     static int get_sibling(int pos) {
       return pos ^ 1;
     }
@@ -171,69 +328,6 @@ namespace SegmentTreeAndList {
       return (father << 1) + 1;
     }
 
-    static constexpr const bool lst_del = false;
-    static constexpr const bool lst_ins = true;
-
-    template<bool is_insert>
-    void list_change(int rank) {
-      auto pos = sz + rank;
-      int prev_elem = 0;
-      while (pos != 1) {
-        if (is_right_son(pos) //comes from right
-          && is_filled(get_sibling(pos))//left brother is filled
-          ) {
-          prev_elem = get_sibling(pos);
-          pos >>= 1;
-          break;
-        }
-        if constexpr (is_insert) {
-          ++tree_list[pos >>= 1];
-        }
-        else {
-          --tree_list[pos >>= 1];
-          assert(tree_list[pos] >= 0);
-        }
-      };
-      if (prev_elem) {
-        while (pos) {
-          if constexpr (is_insert) {
-            ++tree_list[pos];
-          }
-          else {
-            --tree_list[pos];
-            assert(tree_list[pos] >= 0);
-          }
-          pos >>= 1;
-        }
-        while (prev_elem < sz) {
-          auto rs = get_right_son(prev_elem);
-          prev_elem = is_filled(rs) ? rs : rs - 1;
-        }
-      }
-      pos = sz + rank;
-
-      if constexpr (is_insert) {
-        tree_list[pos] = tree_list[prev_elem];
-        tree_list[prev_elem] = pos;
-      }
-      else {
-        assert(tree_list[prev_elem] == pos);
-        tree_list[prev_elem] = tree_list[pos];
-        tree_list[pos] = 0;
-      }
-    }
-
-    void list_insert(int rank) {
-      list_change<lst_ins>(rank);
-    }
-
-    void list_delete(int rank) {
-      list_change<lst_del>(rank);
-    }
-
-    int get_next(int rank) const {
-      return tree_list[sz + rank] - sz;
-    }
 
     int get_sz() {
       int v = 1;
@@ -252,11 +346,6 @@ namespace SegmentTreeAndList {
       sz = get_sz();
       SZ = sz + n;
       depth = get_depth();
-      tree_list = new int[SZ];
-      std::fill_n(tree_list, SZ, 0);
-      tree_list[0] = 1;//fake last list element is stored in 0 position - the header of list
-      //ordered_list[i]==1 where i>=sz means that i is filled, but next filled element is not exists (i.e.last element in list is i)
-
 #ifdef _DEBUG
       construct();
 #endif  
@@ -270,10 +359,6 @@ namespace SegmentTreeAndList {
       if (levels) {
         delete[] levels;
         levels = nullptr;
-      }
-      if (tree_list) {
-        delete[] tree_list;
-        tree_list = nullptr;
       }
     }
 
@@ -394,9 +479,14 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
   for (int i = 0; i < n * 2; ++i) {
     points2ranksY[ranks2pointsY[i]] = i;
   }
+  auto ranks2rectanglesY = ranks2pointsY;//we dont need ranks2pointsY, but we need ranks2rectanglesY, so we can reuse allocated array
+  for (int i = 0; i < n * 2; ++i) {
+    ranks2rectanglesY[i] >>= 1;//rectangle id is any endpoint id divided by 2, because each rectangle has 2 endpoints
+  }
 
 
   STree st(n * 2);
+  TreeList<2> tl(n * 2);
   //first we need to calculate how many rectangles can be in each node of segment tree at the same time, to allocate arrays for nodes
   auto tree_size = st.get_tree_size();
   auto counts_keeper = std::make_unique<count_info[]>(tree_size);
@@ -475,12 +565,12 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
         node_rects[node_arrays[pos].end++] = id;
         };
       st.insert_range(beginY, endY, rect_id, do_insert);
-      st.list_insert(endY);
-      st.list_insert(beginY);
-      auto next = st.get_next(beginY);
+      tl.list_insert(endY);
+      tl.list_insert(beginY);
+      auto next = tl.get_next(beginY);
       while (next != endY) {
-        auto other_id = ranks2pointsY[next] >> 1;
-        next = st.get_next(next);
+        auto other_id = ranks2rectanglesY[next];
+        next = tl.get_next(next);
         if (dublicate_checker[other_id] == rect_id)
           continue;
         dublicate_checker[other_id] = rect_id;
@@ -488,8 +578,8 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
       }
     }
     else {
-      st.list_delete(beginY);
-      st.list_delete(endY);
+      tl.list_delete(beginY);
+      tl.list_delete(endY);
       //we do not remove rectangle from arrays, but mark it as removed, so it will be removed later when we need to locate new rectangle
       is_removed[rect_id] = 1;
     }
@@ -499,7 +589,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 int main()
 {
   rect_set rs;
-  int N = 256 * 256;
+  int N = 256 * 256 + 1;
   rs.fill_random(N, 52);
 
   std::vector<std::pair<int, int>> fast;
@@ -524,7 +614,7 @@ int main()
   auto t0 = std::chrono::high_resolution_clock::now();
   rect_intersections(rs, collect2(fast_count));
   auto t1 = std::chrono::high_resolution_clock::now();
-
+  //return 0;
   auto t2 = std::chrono::high_resolution_clock::now();
   rect_intersections_trivial(rs, collect2(trivial_count));
   auto t3 = std::chrono::high_resolution_clock::now();
@@ -547,7 +637,7 @@ int main()
   if (fast_count == trivial_count) {
     std::cout << "OK: intersections count = " << fast_count << "\n";
     std::cout << "Speedup: " << static_cast<double>(trivial_ms) / fast_ms << "x\n";
-    std::cout << (double)trivial_count*450 / N / N  << " intersections per rectangle% theortical\n";
+    std::cout << (double)trivial_count*450 / N / (N-1) << "% : percent of theortical value (4/9) intersections per rectangle\n";
   }
   else {
     std::cout << "Mismatch: fast=" << fast_count << " trivial=" << trivial_count << "\n";
