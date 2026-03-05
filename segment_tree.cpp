@@ -257,7 +257,7 @@ namespace SegmentTreeAndList {
         do_insert(1, id);
         return;
       }
-      int pow = depth;
+      int pow = std::bit_width((unsigned)(r - l));
       int from, to;
       do {
         --pow;
@@ -575,7 +575,7 @@ void rect_intersections(const rect_set& rs, action_func reporter) {
 int main()
 {
   rect_set rs;
-  int N = 256 * 256 + 1;
+  int N = 128 * 256 + 5;
   rs.fill_random(N, 52);
 
   std::vector<std::pair<int, int>> fast;
